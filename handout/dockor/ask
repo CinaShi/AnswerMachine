@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+#!/usr/bin/python3 -W ignore::DeprecationWarning
+# -*- coding:utf8 -*-
+
+import sys
+import spacy
+import codecs
+from nltk.parse import CoreNLPParser
+from nltk.parse.corenlp import CoreNLPDependencyParser
+from nltk import sent_tokenize
+import time
+
+def resolve(corenlp_output):
+	for coref in corenlp_output['corefs']:
+		mentions = corenlp_output['corefs'][coref]
+		antecedent = mentions[0]
+		for j in range(1, len(mentions)):
+			mention = mentions[j]
+			if mention['type'] == 'PRONOMINAL':
+				target_sentence = mention['sentNum']
+				target_token = mention['startIndex'] - 1
+				corenlp_output['sentences'][target_sentence - 1]['tokens'][target_token]['word'] = antecedent['text']
+
+def output_resolved(corenlp_output):
+	output = ""
+	possessives = ['hers', 'his', 'their', 'theirs']
+	for sentence in corenlp_output['sentences']:
+		for token in sentence['tokens']:
+			output_word = token['word']
+			if token['lemma'] in possessives or token['pos'] == 'PRP$':
+				output_word += "'s"
+			output_word += token['after']
+			output += output_word
+	return output
+
+def preprocessing(input_file):
+	tagger = CoreNLPParser(url='http://localhost:9000')
+	dep_parser = CoreNLPDependencyParser(url='http://localhost:9000')
+	ner_tagger = CoreNLPParser(url='http://localhost:9000', tagtype='ner')
+	parseResults = []
+	ners = []
+	with open(input_file, 'r') as f:
+		for line in f:
+			if not line or line == "\n":
+				continue
+			tagger.parser_annotator='tokenize,ssplit,pos,lemma,ner,depparse,coref'
+			timer = time.time()
+			output = tagger.api_call(line)
+			print(str(len(line))+" used "+str(time.time()-timer))
+			resolve(output)
+			output = output_resolved(output)
+			tokens = sent_tokenize(output)
+			for token in tokens:
+				parses = dep_parser.parse(token.split())
+				ner = ner_tagger.tag(token.split())
+				print(list(ner))
+				# print([[(governor, dep, dependent) for governor, dep, dependent in parse.triples()] for parse in parses])
+				parseResults.append(parses)
+				ners.append(ner)
+	return parseResults, ners
+
+
+if __name__ == "__main__":
+	input_file = sys.argv[1]
+	N = int(sys.argv[2])
+
+	for i in range(N):
+		print('Q' + str(i + 1))
+	
+	timer = time.time()
+	parseResults, ners = preprocessing(input_file)
+	print("Used time: "+str(time.time()-timer))
+	
+
