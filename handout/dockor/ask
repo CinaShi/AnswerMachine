@@ -142,7 +142,7 @@ if __name__ == "__main__":
 					continue
 				generatedQuestionCount += 1
 				newQuestion = newQuestion[:-1] + '?'
-				print('Q' + str(generatedQuestionCount) + ': ' + newQuestion)
+				print(': ' + newQuestion)
 
 				if generatedQuestionCount >= N:
 					break
