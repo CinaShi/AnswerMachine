@@ -9,6 +9,7 @@ from nltk.parse import CoreNLPParser
 from nltk.parse.corenlp import CoreNLPDependencyParser
 from nltk import sent_tokenize
 import time
+import re
 
 def resolve(corenlp_output):
 	for coref in corenlp_output['corefs']:
@@ -59,6 +60,63 @@ def preprocessing(input_file):
 				ners.append(ner)
 	return parseResults, ners
 
+def findRemoveTag(ner_list):
+    count = 0
+    removeTag = ner_list[count][1]
+    
+    while count < len(ner_list):
+        count += 1
+        removeTag = ner_list[count][1]
+        
+        if removeTag == 'PERSON' or removeTag == 'COUNTRY' or removeTag == 'CITY' or removeTag == 'STATE_OR_PROVINCE':              
+            break
+    
+    return removeTag
+
+    
+def questionTypeFromTag(removeTag):
+    questionType = 'None'
+    
+    if removeTag == 'PERSON':
+        questionType = 'who'
+    elif removeTag == 'COUNTRY' or removeTag == 'CITY' or removeTag == 'STATE_OR_PROVINCE':
+        tempList = removeTag.split('_')
+        removeTag = ' '.join(tempList) 
+        questionType = 'which ' + removeTag.lower()
+        
+    return questionType
+
+
+def generateQuestion(ner_list, removeTag, questionType):
+    startIdx = 0
+    endIdx = 0
+    
+    while startIdx < len(ner_list):
+        curTag = ner_list[startIdx][1]
+        if curTag == removeTag:
+            if startIdx == 0:
+                questionType = questionType.capitalize()
+            ner_list[startIdx] = (questionType, removeTag)
+            # check succession
+            endIdx = startIdx + 1
+            while endIdx < len(ner_list) and ner_list[endIdx][1] == removeTag:
+                ner_list[endIdx] = (" ", "REMOVE")
+                endIdx += 1
+            break
+        startIdx += 1
+    
+    questionStr = " ".join([x[0] for x in ner_list if x[1] != "REMOVE"])
+    
+    questionStr = re.sub(r'\s([?),.!"](?:\s|$))', r'\1', questionStr)
+    questionStr = re.sub(r'((?:\s|$)[(])\s', r'\1', questionStr)
+    
+    return questionStr
+
+def getQuestion(ner_list_full):
+    removeTag = findRemoveTag(ner_list_full)
+    questionType = questionTypeFromTag(removeTag)
+    questionStr = generateQuestion(ner_list_full, removeTag, questionType)
+    return questionStr
 
 if __name__ == "__main__":
 	input_file = sys.argv[1]
