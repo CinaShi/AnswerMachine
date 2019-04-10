@@ -34,99 +34,126 @@ def output_resolved(corenlp_output):
 			output += output_word
 	return output
 
-def preprocessing(input_file):
-	tagger = CoreNLPParser(url='http://localhost:9000')
-	dep_parser = CoreNLPDependencyParser(url='http://localhost:9000')
-	ner_tagger = CoreNLPParser(url='http://localhost:9000', tagtype='ner')
+def preprocessing(line, tagger, dep_parser, ner_tagger):
 	parseResults = []
 	ners = []
-	with open(input_file, 'r') as f:
-		for line in f:
-			if not line or line == "\n":
-				continue
-			tagger.parser_annotator='tokenize,ssplit,pos,lemma,ner,depparse,coref'
-			timer = time.time()
-			output = tagger.api_call(line)
-			print(str(len(line))+" used "+str(time.time()-timer))
-			resolve(output)
-			output = output_resolved(output)
-			tokens = sent_tokenize(output)
-			for token in tokens:
-				parses = dep_parser.parse(token.split())
-				ner = ner_tagger.tag(token.split())
-				print(list(ner))
-				# print([[(governor, dep, dependent) for governor, dep, dependent in parse.triples()] for parse in parses])
-				parseResults.append(parses)
-				ners.append(ner)
+	
+	tagger.parser_annotator='tokenize,ssplit,pos,lemma,ner,depparse,coref'
+	# timer = time.time()
+	output = tagger.api_call(line)
+	# print(str(len(line))+" used "+str(time.time()-timer))
+	resolve(output)
+	output = output_resolved(output)
+	tokens = sent_tokenize(output)
+	for token in tokens:
+		parses = dep_parser.parse(token.split())
+		ner = ner_tagger.tag(token.split())
+		# print(list(ner))
+		# print([[(governor, dep, dependent) for governor, dep, dependent in parse.triples()] for parse in parses])
+		parseResults.append(parses)
+		ners.append(ner)
+
 	return parseResults, ners
 
 def findRemoveTag(ner_list):
-    count = 0
-    removeTag = ner_list[count][1]
-    
-    while count < len(ner_list):
-        count += 1
-        removeTag = ner_list[count][1]
-        
-        if removeTag == 'PERSON' or removeTag == 'COUNTRY' or removeTag == 'CITY' or removeTag == 'STATE_OR_PROVINCE':              
-            break
-    
-    return removeTag
+	count = 0
+	removeTag = ner_list[count][1]
+	
 
-    
+	while count < len(ner_list):
+		count += 1
+		removeTag = ner_list[count][1]
+		
+		if removeTag == 'PERSON' or removeTag == 'COUNTRY' or removeTag == 'CITY' or removeTag == 'STATE_OR_PROVINCE':              
+			break
+	
+	return removeTag
+
+	
 def questionTypeFromTag(removeTag):
-    questionType = 'None'
-    
-    if removeTag == 'PERSON':
-        questionType = 'who'
-    elif removeTag == 'COUNTRY' or removeTag == 'CITY' or removeTag == 'STATE_OR_PROVINCE':
-        tempList = removeTag.split('_')
-        removeTag = ' '.join(tempList) 
-        questionType = 'which ' + removeTag.lower()
-        
-    return questionType
+	questionType = 'None'
+	
+	if removeTag == 'PERSON':
+		questionType = 'who'
+	elif removeTag == 'COUNTRY' or removeTag == 'CITY' or removeTag == 'STATE_OR_PROVINCE':
+		tempList = removeTag.split('_')
+		removeTag = ' '.join(tempList) 
+		questionType = 'which ' + removeTag.lower()
+		
+	return questionType
 
 
 def generateQuestion(ner_list, removeTag, questionType):
-    startIdx = 0
-    endIdx = 0
-    
-    while startIdx < len(ner_list):
-        curTag = ner_list[startIdx][1]
-        if curTag == removeTag:
-            if startIdx == 0:
-                questionType = questionType.capitalize()
-            ner_list[startIdx] = (questionType, removeTag)
-            # check succession
-            endIdx = startIdx + 1
-            while endIdx < len(ner_list) and ner_list[endIdx][1] == removeTag:
-                ner_list[endIdx] = (" ", "REMOVE")
-                endIdx += 1
-            break
-        startIdx += 1
-    
-    questionStr = " ".join([x[0] for x in ner_list if x[1] != "REMOVE"])
-    
-    questionStr = re.sub(r'\s([?),.!"](?:\s|$))', r'\1', questionStr)
-    questionStr = re.sub(r'((?:\s|$)[(])\s', r'\1', questionStr)
-    
-    return questionStr
+	startIdx = 0
+	endIdx = 0
+	
+	while startIdx < len(ner_list):
+		curTag = ner_list[startIdx][1]
+		if curTag == removeTag:
+			if startIdx == 0:
+				questionType = questionType.capitalize()
+			ner_list[startIdx] = (questionType, removeTag)
+			# check succession
+			endIdx = startIdx + 1
+			while endIdx < len(ner_list) and ner_list[endIdx][1] == removeTag:
+				ner_list[endIdx] = (" ", "REMOVE")
+				endIdx += 1
+			break
+		startIdx += 1
+	
+	questionStr = " ".join([x[0] for x in ner_list if x[1] != "REMOVE"])
+	
+	questionStr = re.sub(r'\s([?),.!"](?:\s|$))', r'\1', questionStr)
+	questionStr = re.sub(r'((?:\s|$)[(])\s', r'\1', questionStr)
+	
+	return questionStr
 
 def getQuestion(ner_list_full):
-    removeTag = findRemoveTag(ner_list_full)
-    questionType = questionTypeFromTag(removeTag)
-    questionStr = generateQuestion(ner_list_full, removeTag, questionType)
-    return questionStr
+	sentenceEnd = [x[0] for x in ner_list_full if x[0] == '.']
+	if len(sentenceEnd) == 0:
+		return None
+	removeTag = findRemoveTag(ner_list_full)
+	questionType = questionTypeFromTag(removeTag)
+	questionStr = generateQuestion(ner_list_full, removeTag, questionType)
+	return questionStr
 
 if __name__ == "__main__":
 	input_file = sys.argv[1]
 	N = int(sys.argv[2])
-
-	for i in range(N):
-		print('Q' + str(i + 1))
 	
-	timer = time.time()
-	parseResults, ners = preprocessing(input_file)
-	print("Used time: "+str(time.time()-timer))
+	# timer = time.time()
+
+	tagger = CoreNLPParser(url='http://localhost:9000')
+	dep_parser = CoreNLPDependencyParser(url='http://localhost:9000')
+	ner_tagger = CoreNLPParser(url='http://localhost:9000', tagtype='ner')
+
+	generatedQuestionCount = 0
+
+	with open(input_file, 'r') as f:
+		for line in f:
+			if not line or line == "\n":
+				continue
+			parseResults, ners = preprocessing(line, tagger, dep_parser, ner_tagger)
+
+			# generate question
+			for ner in ners:
+				newQuestion = getQuestion(ner)
+				if not newQuestion:
+					continue
+				generatedQuestionCount += 1
+				newQuestion = newQuestion[:-1] + '?'
+				print('Q' + str(generatedQuestionCount) + ': ' + newQuestion)
+
+				if generatedQuestionCount >= N:
+					break
+
+			# print and save questions
+
+			if generatedQuestionCount >= N:
+				break
+
+
+	# print("Used time: "+str(time.time()-timer))
+
 	
 
