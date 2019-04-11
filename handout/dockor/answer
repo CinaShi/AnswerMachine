@@ -69,85 +69,130 @@ def preprocessing(input_file):
 
 
 def question_parser(question):
-	question_dep = []
-	wh_word = question.split()[0]
+    question_dep = []
+    first_word = question.split()[0].lower()
+    question = question[0].lower() + question[1:]
 
-	question_parses = dep_parser.parse(question.split())
+    question_parses = dep_parser.parse(question.split())
 
-	for parse in question_parses:
-		for governor, dep, dependent in parse.triples():
-			question_dep.append((governor, dep, dependent))
+    for parse in question_parses:       
+        for governor, dep, dependent in parse.triples():
+            question_dep.append((governor, dep, dependent))
 
-	return question_dep, wh_word
+    return question_dep, first_word
 
 def nsubj_answer(text_dep, key_word):
-	answer = None
-	for (governor, dep, dependent) in text_dep:
-		gov_word, gov_tag = governor
-		dep_word, dep_tag = dependent
-		if gov_word == key_word and dep == 'nsubj':
-			answer = dep_word
-		elif dep_word == key_word and dep == 'nsubj':
-			answer = gov_word
+    answer = None
+    for (governor, dep, dependent) in text_dep:
+        gov_word, gov_tag = governor
+        dep_word, dep_tag = dependent
+        if gov_word == key_word and dep == 'nsubj':
+            answer = dep_word
+        elif dep_word == key_word and dep == 'nsubj':
+            answer = gov_word
 
-	return answer
+    return answer
+
+def yes_no_answer_from_dep_lists(text_dep, question_dep, first_word):
+    key_word = None
+    question_key_word = None
+    answer = "No"
+
+    for (governor, dep, dependent) in question_dep:
+        gov_word, gov_tag = governor
+        dep_word, dep_tag = dependent
+
+        det_Tag = 'cop'
+
+        if first_word in ["do","doing","did","done","does","can","could","will","should"]:
+            det_Tag = 'aux'
+
+        if dep_word == first_word and dep == det_Tag:
+            question_key_word = gov_word
+            break
+
+    for (governor, dep, dependent) in question_dep:
+        gov_word, gov_tag = governor
+        dep_word, dep_tag = dependent 
+
+        if gov_word == question_key_word and (dep == 'compound' or dep == 'nsubj'):
+            key_word = dep_word
+            break
+        elif gov_word == question_key_word and dep == 'dobj':
+            key_word = dep_word
+            temp = key_word
+            key_word = question_key_word
+            question_key_word = temp
+            break
+
+
+
+    for (governor, dep, dependent) in text_dep:
+        gov_word, gov_tag = governor
+        dep_word, dep_tag = dependent
+
+        if gov_word == question_key_word and (dep == 'nsubj' or dep == 'compound') and dep_word == key_word:
+            answer = "Yes"
+            break
+
+    return answer
 
 
 
 
-def answer_from_dep_lists(text_dep, question_dep, wh_word):
-	answer = None
-	key_word = None
+def wh_answer_from_dep_lists(text_dep, question_dep, wh_word):
+    answer = None
+    key_word = None
 
-	is_doing = False
-	is_where = False
+    is_doing = False
+    is_where = False
 
-	do_word_list = ["do","doing","did","done"]
-	be_word_list = ["be","is","are","am","was","were"]
+    do_word_list = ["do","doing","did","done","does"]
+    be_word_list = ["be","is","are","am","was","were"]
 
-	for (governor, dep, dependent) in question_dep:
-		gov_word, gov_tag = governor
-		dep_word, dep_tag = dependent
+    for (governor, dep, dependent) in question_dep:
+        gov_word, gov_tag = governor
+        dep_word, dep_tag = dependent
 
-		if gov_word == wh_word and dep == 'nsubj':
-			key_word = dep_word
-		elif dep_word == wh_word and dep == 'nsubj':
-			key_word = gov_word
+        if gov_word == wh_word and dep == 'nsubj':
+            key_word = dep_word
+        elif dep_word == wh_word and dep == 'nsubj':
+            key_word = gov_word
 
-		### 1 solve "what-do"
-		if (gov_word in do_word_list) and dep == 'dobj' and dep_word == "what": 
-			is_doing = True
-			do_word = gov_word
+        ### 1 solve "what-do"
+        if (gov_word in do_word_list) and dep == 'dobj' and dep_word == "what": 
+            is_doing = True
+            do_word = gov_word
 
-		### 2 solve "where"
-		if dep == 'advmod' and dep_word == 'where' and (gov_word in be_word_list): 
-			be_word = gov_word
-			is_where = True
+        ### 2 solve "where"
+        if dep == 'advmod' and dep_word == 'where' and (gov_word in be_word_list): 
+            be_word = gov_word
+            is_where = True
 
-	answer = nsubj_answer(text_dep, key_word)
+    answer = nsubj_answer(text_dep, key_word)
 
-	### 1 solve "what-do"
-	if answer == None and is_doing:
-		for (governor, dep, dependent) in question_dep:
-			gov_word, gov_tag = governor
-			dep_word, dep_tag = dependent
+    ### 1 solve "what-do"
+    if answer == None and is_doing:
+        for (governor, dep, dependent) in question_dep:
+            gov_word, gov_tag = governor
+            dep_word, dep_tag = dependent
 
-			if gov_word == do_word and dep == 'nsubj':
-				key_word = dep_word
+            if gov_word == do_word and dep == 'nsubj':
+                key_word = dep_word
 
-	answer = nsubj_answer(text_dep, key_word)
+    answer = nsubj_answer(text_dep, key_word)
 
-	### 2 solve "where"
-	if answer == None and is_where:
-		for (governor, dep, dependent) in question_dep:
-			gov_word, gov_tag = governor
-			dep_word, dep_tag = dependent
+    ### 2 solve "where"
+    if answer == None and is_where:
+        for (governor, dep, dependent) in question_dep:
+            gov_word, gov_tag = governor
+            dep_word, dep_tag = dependent
 
-			if gov_word == be_word and dep == 'nsubj':
-				key_word = dep_word
-	
-	answer = nsubj_answer(text_dep, key_word)
-	return answer
+            if gov_word == be_word and dep == 'nsubj':
+                key_word = dep_word
+    
+    answer = nsubj_answer(text_dep, key_word)
+    return answer
 
 '''
 question_dep, wh_word = question_parser(question)
@@ -178,6 +223,8 @@ if __name__ == "__main__":
         for governor, dep, dependent in parse.triples():
             text_dep.append((governor, dep, dependent))
 
+    # print(text_dep)
+
     question_list = []
 
     with open(question_file, 'r')  as f:
@@ -187,10 +234,21 @@ if __name__ == "__main__":
             question_list.append(line)
             # print('A'+str(count))
 
+    yes_no = False
 
     for question in question_list:
-        question_dep, wh_word = question_parser(question)
-        answer = answer_from_dep_lists(text_dep, question_dep, wh_word)
+        be_word_list = ["is","are","am","was","were"]
+        do_word_list = ["do","doing","did","done","does","can","could","will","should"]
+        question_dep, first_word = question_parser(question)
+        # print(question_dep)
+        if (first_word in be_word_list) or (first_word in do_word_list):
+            yes_no = True
+
+        if not yes_no:
+            answer = wh_answer_from_dep_lists(text_dep, question_dep, first_word)
+        else:
+            answer = yes_no_answer_from_dep_lists(text_dep, question_dep, first_word)
+
         if answer == None:
             answer = "<No Answer>"
         print(answer)
